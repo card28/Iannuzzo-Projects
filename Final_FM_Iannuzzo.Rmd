@@ -1,0 +1,444 @@
+---
+title: "Iannuzzo_Final"
+author: "Robert Iannuzzo"
+date: "2025-06-11"
+output: pdf_document
+---
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+##load packages
+library(FinancialMath)
+library(knitr)
+library(zoo)
+library(quantmod) #to use function ``getSymbols"
+library(fBasics)  #to use the function "normalTest"
+library(AdaptGauss) #to use the function "QQplotGMM" for Q-Q plot of mixture Gaussian
+library(timeDate) #to use the function "kurtosis" to compute sample excess kurtosis
+library(FinTS) #to use ArchTest() function
+library(rugarch) #to use the functions for arch, garch, and egarch models
+library(scales)
+###settings for R chunks
+opts_chunk$set(echo=TRUE,
+               message=FALSE,
+               warning=FALSE,
+               results='asis',
+               fig.keep = 'last') #echo: whether prints the R code; message: whether shows the message outputs; warning: whether shows the warning messages; results: whether contain ## in front of the R output; fig.keep: show all figures or just the last one in an R chunk
+```
+
+```{r}
+rm(list = ls())
+
+start.date <- '2023-01-01'
+
+end.date   <- '2025-06-09'
+
+crypto.symbols <- c("BTC-USD",
+                    "ETH-USD",
+                    "ADA-USD",
+                    "SOL-USD",
+                    "XRP-USD")
+
+rtn <- c()
+
+for (i in 1:length(crypto.symbols)) {
+  hist.price <- getSymbols(crypto.symbols[i],
+                           from = start.date,
+                           to = end.date,
+                           auto.assign = FALSE)
+  colnames(hist.price) <- c("Open",
+                            "High",
+                            "Low",
+                            "Close",
+                            "Volume",
+                            "Adjusted")
+  hist.rtn <- dailyReturn(hist.price$Adjusted,
+                          type = "log")
+  rtn <- cbind(rtn,
+               hist.rtn)
+}
+
+colnames(rtn) <- c("Bitcoin", "Ethereum", "Cardano", "Solana", "XRP")
+
+# Compute mean return vector and variance-covariance matrix
+mean.rtn <- colMeans(rtn)
+Sigma <- var(rtn)
+
+mean.rtn
+Sigma
+```
+
+```{r}
+getSymbols("ETH-USD",
+           from = "2023-01-01",
+           to = "2025-06-09")
+
+getSymbols("BTC-USD",
+           from = "2023-01-01",
+           to = "2025-06-09")
+
+
+getSymbols("XRP-USD",
+           from = "2023-01-01",
+           to = "2025-06-09")
+
+getSymbols("ADA-USD",
+                  from = "2023-01-01",
+                  to = "2025-06-09")
+
+getSymbols("SOL-USD",
+                  from = "2023-01-01",
+                  to = "2025-06-09")
+
+getSymbols("BITW",
+           from = "2023-01-01",
+           to = "2025-06-09")
+```
+
+```{r}
+chartSeries(`ETH-USD`[, "ETH-USD.Adjusted"],
+            name = "Daily Adjusted Price of Ethereum",
+            )
+
+chartSeries(`BTC-USD`[, "BTC-USD.Adjusted"],
+            name = "Daily Adjusted Price of Bitcoin"
+            )
+
+chartSeries(`XRP-USD`[, "XRP-USD.Adjusted"],
+            name = "Daily Adjusted Price of XRP")
+
+chartSeries(`ADA-USD`[, "ADA-USD.Adjusted"],
+            name = "Daily Adjusted Price of Cardano (ADA)")
+
+chartSeries(`SOL-USD`[, "SOL-USD.Adjusted"],
+            name = "Daily Adjusted Price of Solana (SOL)")
+
+chartSeries(BITW$BITW.Adjusted,
+            name = "Daily Adjusted Price of Bitwise"
+            )
+```
+
+```{r}
+Ethereum.return = dailyReturn(`ETH-USD`[, "ETH-USD.Adjusted"],
+                         type = "log")
+
+Bitcoin.return = dailyReturn(`BTC-USD`[, "BTC-USD.Adjusted"],
+                         type = "log")
+
+XRP.return = dailyReturn(`XRP-USD`[, "XRP-USD.Adjusted"],
+                         type = "log")
+
+Cardano.return = dailyReturn(`ADA-USD`[, "ADA-USD.Adjusted"],
+                             type = "log")
+
+Solana.return = dailyReturn(`SOL-USD`[, "SOL-USD.Adjusted"],
+                            type = "log")
+
+Bitwise.return = dailyReturn(BITW$BITW.Adjusted,
+                             type = "log")
+```
+
+```{r}
+# Combine Bitwise return with crypto returns, keeping only overlapping dates
+combined.rtn = na.omit(merge(rtn, Bitwise.return))
+
+# Split back out: crypto returns and Bitwise return
+rtn = combined.rtn[, 1:5]
+
+Bitwise.return = combined.rtn[, 6]
+
+#I had to do this because Bitwise had different data length
+```
+
+```{r}
+hist(Ethereum.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+
+hist(Bitcoin.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+
+hist(XRP.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+
+hist(Cardano.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+
+hist(Solana.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+
+hist(Bitwise.return,
+     nclass = 60,
+     freq = FALSE,
+     ylim = c(0,40),
+     xlim = c(-0.2,0.2))
+```
+
+
+```{r}
+Ethereum.summary = c(mean(Ethereum.return),
+                     sd(Ethereum.return),
+                     skewness(Ethereum.return),
+                     kurtosis(Ethereum.return,
+                              method = "excess"),
+                     min(Ethereum.return),
+                     max(Ethereum.return))
+
+Bitcoin.summary = c(mean(Bitcoin.return),
+                    sd(Bitcoin.return),
+                    skewness(Bitcoin.return),
+                    kurtosis(Bitcoin.return,
+                             method = "excess"),
+                    min(Bitcoin.return),
+                    max(Bitcoin.return))
+
+XRP.summary = c(mean(XRP.return),
+                sd(XRP.return),
+                skewness(XRP.return),
+                kurtosis(XRP.return,
+                         method = "excess"),
+                min(XRP.return),
+                max(XRP.return))
+
+Solana.summary = c(mean(Solana.return),
+                   sd(Solana.return),
+                   skewness(Solana.return),
+                   kurtosis(Solana.return,
+                            method = "excess"),
+                   min(Solana.return),
+                   max(Solana.return))
+
+Cardano.summary = c(mean(Cardano.return),
+                    sd(Cardano.return),
+                    skewness(Cardano.return),
+                    kurtosis(Cardano.return,
+                             method = "excess"),
+                    min(Cardano.return),
+                    max(Cardano.return))
+
+
+Bitwise.summary = c(mean(Bitwise.return),
+                    sd(Bitwise.return),
+                    skewness(Bitwise.return),
+                    kurtosis(Bitwise.return,
+                             method = "excess"),
+                    min(Bitwise.return),
+                    max(Bitwise.return))
+
+
+summary.table = cbind(Ethereum.summary,
+                      Bitcoin.summary,
+                      XRP.summary,
+                      Solana.summary,
+                      Cardano.summary,
+                      Bitwise.summary)
+
+rownames(summary.table) = c("mean",
+                            "standard deviation",
+                            "skewness",
+                            "kurtosis",
+                            "minimum",
+                            "maximum")
+
+knitr::kable(summary.table, digits = 6)
+```
+
+I would say that if our company was going to invest in crypto we should invest in the Bitwise index versus Ethereum or Bitcoin directly due to it having the highest returns relative to kurtosis.
+
+```{r}
+t.test(as.numeric(Ethereum.return))
+
+t.test(as.numeric(Bitcoin.return))
+
+t.test(as.numeric(XRP.return))
+
+t.test(as.numeric(Solana.return))
+
+t.test(as.numeric(Cardano.return))
+
+t.test(as.numeric(Bitwise.return))
+```
+
+
+
+
+```{r}
+normalTest(as.numeric(Ethereum.return),
+           method = "jb")
+
+normalTest(as.numeric(Bitcoin.return),
+           method = "jb")
+
+normalTest(as.numeric(XRP.return),
+           method = "jb")
+
+normalTest(as.numeric(Solana.return),
+           method = "jb")
+
+normalTest(as.numeric(Cardano.return),
+           method = "jb")
+
+normalTest(as.numeric(Bitwise.return),
+           method = "jb")
+```
+
+```{r}
+Ethereum.Vol = sqrt(252) * sd(Ethereum.return)
+  
+Bitcoin.Vol = sqrt(252) * sd(Bitcoin.return)
+
+XRP.Vol = sqrt(252) * sd(XRP.return)
+
+Solana.Vol = sqrt(252) * sd(Solana.return)
+
+Cardano.Vol = sqrt(252) * sd(Cardano.return)
+  
+Bitwise.Vol = sqrt(252) * sd(Bitwise.return)
+```
+
+```{r}
+Volatility = cbind(Ethereum.Vol,
+                   Bitcoin.Vol,
+                   XRP.Vol,
+                   Solana.Vol,
+                   Cardano.Vol,
+                   Bitwise.Vol
+                   )
+  
+colnames(Volatility) = c("Ethereum",
+                         "Bitcoin",
+                         "XRP",
+                         "Solana",
+                         "Cardano",
+                         "Bitwise")
+  
+rownames(Volatility) = "Annualized Volatility"
+  
+knitr::kable(Volatility)
+
+```
+
+
+```{r}
+barplot(c(Ethereum.Vol,
+          Bitcoin.Vol,
+          XRP.Vol,
+          Solana.Vol,
+          Cardano.Vol,
+          Bitwise.Vol), # used a vector instead of Volatility so I could control color
+                        # Volatility is a matrix and cannot be color controlled
+        names.arg = c("Ethereum",
+                      "Bitcoin",
+                      "XRP",
+                      "Solana",
+                      "Cardano",
+                      "Bitwise"), #had to name the bars
+        ylab = "Annualized Volatility",
+        ylim = c(0.00,
+                 0.80),
+        main = "Annualized Volatility Comparison 2020-2022",
+        col = c("navyblue",
+                "steelblue",
+                "lightblue"))
+```
+
+
+
+OK, we can clearly see that Bitwise has much more volatility than Bitcoin. However, it has similiar volatility to Ethereum and less volatility than the other 3. Just based, on these volatilities I understand why Bitwise might act like an index.
+
+
+```{r}
+
+average.volatility = mean(Volatility[1, 1:5])
+
+vol.compare = c(Average = average.volatility,
+                Bitwise = Bitwise.Vol)
+
+barplot(vol.compare,
+        main = "Average Volatility of 5 Cryptos vs. Bitwise Index",
+        ylab = "Annualized Volatility",
+        col = c("steelblue", "darkorange"),
+        ylim = c(0, max(vol.compare) * 1.2))
+
+```
+
+
+```{r}
+beta = c()
+
+R.square=c()
+
+for (i in 1:ncol(rtn)){
+  simple.linear.model = lm(rtn[,i]~Bitwise.return)
+  beta[i] = simple.linear.model$coefficients[2]
+  R.square[i] = summary(simple.linear.model)$r.squared
+}
+
+result = rbind(beta,
+               R.square)
+
+rownames(result) = c('beta',
+                     'R-square')
+
+asset.symbols = c("Bitcoin",
+                  "Ethereum",
+                  "Cardano",
+                  "Solana",
+                  "XRP")
+
+kable(round(result,
+            digit=2),
+      row.names=T,
+      col.names = asset.symbols)
+```
+
+
+```{r}
+SML.model = lm (mean.rtn~beta)
+
+summary(SML.model)
+
+## plot the beta's Vs. mean returns
+plot(beta,
+     mean.rtn,
+     type = "p",
+     col = "indianred",
+     ylim = c(0,
+              0.005),
+     xlim = c(0,
+              max(beta)+0.75))
+## add the SML
+abline(reg = SML.model)
+
+text(beta,
+     mean.rtn,
+     pos=4,
+     asset.symbols)
+
+##add Bitwise to the plot
+
+points(1,
+       mean(Bitwise.return),
+       col='springgreen')
+text(1,
+     mean(Bitwise.return),
+     pos=4,'Bitwise')
+```
+
+
+We can clearly see from this that Bitwise is an overvalued asset, which I figured since it's volatility seemed much too high for it's returns. I would honestly suggest just investing Bitcoin if our firm wanted to get into crypto. We can see it's still undervalued here.
+
+
